@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+    <meta charset="UTF-8">
+    <title>ChromaDB Quick Viewer</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background: #f4f6f9;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        h2 {
+            color: #2c3e50;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 10px;
+        }
+
+        button {
+            background: #e67e22;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 15px;
+        }
+
+        button:hover {
+            background: #d35400;
+        }
+
+        .collection-card {
+            background: #fff;
+            padding: 20px;
+            margin-top: 15px;
+            border-left: 5px solid #2ecc71;
+            border-radius: 4px;
+            box-shadow: 0 1px 5px rgba(0, 0, 0, 0.05);
+        }
+
+        .badge {
+            background: #2ecc71;
+            color: white;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 14px;
+            margin-left: 10px;
+            font-weight: bold;
+        }
+
+        .samples-section {
+            margin-top: 15px;
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 4px;
+            border: 1px dashed #cbd5e1;
+        }
+
+        .sample-item {
+            background: white;
+            padding: 10px;
+            margin-bottom: 8px;
+            border-radius: 4px;
+            border-left: 3px solid #3498db;
+            font-size: 13px;
+            line-height: 1.6;
+        }
+
+        .sample-index {
+            font-weight: bold;
+            color: #2980b9;
+            margin-right: 5px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h2>📊 HỆ THỐNG KIỂM TRA CHROMADB VECTOR</h2>
+        <p>Bấm nút dưới đây để quét và xem chi tiết nội dung các đoạn văn (Chunks) trong kho dữ liệu:</p>
+        <button onclick="fetchCollections()">🔄 Quét Kho Vector DB</button>
+
+        <div id="result"></div>
+    </div>
+
+    <script>
+        async function fetchCollections() {
+            const resDiv = document.getElementById('result');
+            resDiv.innerHTML = "⏳ Đang kết nối tới Backend và bốc tách dữ liệu mẫu...";
+            try {
+                // Gọi tới API Backend FastAPI
+                const response = await fetch('http://localhost:8000/api/collections');
+                if (!response.ok) throw new Error("Cổng API trả về lỗi hệ thống.");
+
+                const data = await response.json();
+
+                if (!data || data.length === 0) {
+                    resDiv.innerHTML = "<div class='collection-card' style='border-left-color:#e74c3c;'>⚠️ Kết nối thành công nhưng hiện chưa có collection nào được tạo.</div>";
+                    return;
+                }
+
+                let html = `<h3>✅ Kết nối thành công! Chi tiết kho lưu trữ:</h3>`;
+
+                data.forEach(col => {
+                    // Tạo phần HTML cho các chunk mẫu nếu có
+                    let samplesHtml = '';
+                    if (col.samples && col.samples.length > 0) {
+                        samplesHtml += `<div class="samples-section"><strong>📝 Xem trước các đoạn văn mẫu đầu tiên:</strong><br><br>`;
+                        col.samples.forEach((doc, index) => {
+                            samplesHtml += `
+                                <div class="sample-item">
+                                    <span class="sample-index">[Chunk ${index + 1}]:</span> ${escapeHtml(doc)}
+                                </div>`;
+                        });
+                        samplesHtml += `</div>`;
+                    } else {
+                        samplesHtml += `<div class="samples-section" style="color: #7f8c8d;">Không có dữ liệu văn bản mẫu hoặc chưa nạp tài liệu.</div>`;
+                    }
+
+                    html += `
+                        <div class="collection-card">
+                            <strong>📦 Tên bộ sưu tập:</strong> <span style="color:#e67e22; font-size:18px; font-weight:bold;">${col.name}</span>
+                            <span class="badge">${col.count} Chunks</span><br><br>
+                            <strong>🆔 ID:</strong> ${col.id}<br>
+                            <strong>⚙️ Metadata:</strong> ${col.metadata ? JSON.stringify(col.metadata) : "Trống"}<br>
+                            ${samplesHtml}
+                        </div>
+                    `;
+                });
+                resDiv.innerHTML = html;
+            } catch (err) {
+                resDiv.innerHTML = "<div class='collection-card' style='border-left-color:#e74c3c;'>❌ Không thể lấy dữ liệu. Hãy đảm bảo bạn đã lưu code FastAPI mới và khởi động lại Docker! <br><br> Chi tiết: " + err.message + "</div>";
+            }
+        }
+
+        // Hàm bổ trợ để ngăn lỗi hiển thị khi văn bản chứa ký tự HTML đặc biệt
+        function escapeHtml(text) {
+            if (!text) return '';
+            return text
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+    </script>
+</body>
+
+</html>

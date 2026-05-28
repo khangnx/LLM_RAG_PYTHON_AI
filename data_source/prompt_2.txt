@@ -1,0 +1,72 @@
+Để giúp bạn xây dựng một bản demo chuyên nghiệp, tôi đã thiết kế một Master Prompt được chia thành 4 module module kỹ thuật chính. Bạn có thể sử dụng prompt này để điều hướng các AI coding assistant (như Claude 3.5 Sonnet hoặc GPT-4o) viết code cho bạn, hoặc dùng làm tài liệu kiến trúc (Blueprint) cho dự án.
+
+🤖 MASTER PROMPT: RAG & LLM ENTERPRISE DEMO SYSTEM
+Context: Bạn là một chuyên gia Senior Full-stack Developer. Hãy xây dựng một ứng dụng demo RAG (Retrieval-Augmented Generation) hoàn chỉnh để trình diễn cho khách hàng. Hệ thống bao gồm Python FastAPI (Backend) và Vue 3 (Frontend).
+
+🧩 MODULE 1: BACKEND CORE - DATA PROCESSING (PYTHON)
+Mục tiêu: Xử lý file local và tạo kho tri thức (Knowledge Base).
+
+Sử dụng thư viện LangChain kết hợp PyPDF2 cho PDF và Pandas cho Excel.
+
+Logic Chunking:
+
+PDF: Sử dụng RecursiveCharacterTextSplitter với chunk_size=1000, overlap=200.
+
+Excel: Biến mỗi row thành 1 chunk văn bản chứa đầy đủ Header.
+
+Vector Database: Sử dụng ChromaDB (Local persistence) để lưu trữ vector.
+
+Embedding Model: Sử dụng OpenAI text-embedding-3-small.
+
+⚙️ MODULE 2: BACKEND API - FASTAPI
+Mục tiêu: Cung cấp các endpoint cho Frontend gọi tới. Xây dựng các API sau:
+
+POST /ingest: Quét folder local, thực hiện trích xuất, chunking và lưu vào ChromaDB. Trả về số lượng file và số lượng chunks đã tạo.
+
+POST /chat: Nhận câu hỏi từ user.
+
+B1: Tìm kiếm top 3-5 chunks liên quan nhất từ ChromaDB.
+
+B2: Gửi Prompt kèm Context cho LLM (GPT-4o).
+
+B3: Trả về JSON bao gồm: answer (câu trả lời) và metadata (tên file, số trang/dòng để trích dẫn).
+
+GET /status: Kiểm tra số lượng tài liệu hiện có trong kho dữ liệu.
+
+🎨 MODULE 3: FRONTEND UI - VUE 3 & ELEMENT PLUS
+Mục tiêu: Giao diện dashboard hiện đại, scannable.
+
+Theme: Sử dụng Element Plus (Dark mode hoặc Modern Light).
+
+Layout:
+
+Sidebar: Quản lý cấu hình (Folder path, Model selection).
+
+Main Content: Chia làm 2 tab:
+
+Data Management: Nút "Sync Data", hiển thị danh sách file và số lượng chunks dưới dạng Table.
+
+AI Assistant: Giao diện Chatbot chuyên nghiệp (Bubble chat).
+
+Tính năng quan trọng: Hiển thị trích dẫn (Source citations) dưới mỗi câu trả lời của AI dưới dạng các thẻ (Tags) hoặc Tooltip.
+
+🧠 MODULE 4: RAG PROMPT ENGINEERING (SYSTEM PROMPT)
+Mục tiêu: Đảm bảo LLM trả lời trung thực dựa trên dữ liệu.
+Sử dụng System Prompt sau:
+
+"Bạn là một trợ lý phân tích dữ liệu chuyên nghiệp. Bạn chỉ được phép sử dụng thông tin từ 'Context' được cung cấp dưới đây để trả lời câu hỏi.
+
+Nếu thông tin không có trong Context, hãy lịch sự từ chối và nói rằng 'Dữ liệu nội bộ không chứa thông tin này'.
+
+Luôn ghi rõ nguồn (tên file, số trang/dòng) ở cuối câu trả lời.
+
+Nếu dữ liệu từ Excel, hãy trình bày lại dưới dạng bảng Markdown nếu cần thiết để dễ nhìn."
+
+🛠️ YÊU CẦU KỸ THUẬT CHI TIẾT
+Cấu trúc thư mục: Chia rõ backend/ và frontend/.
+
+Quản lý môi trường: Sử dụng file .env để lưu OpenAI API Key và Folder Path.
+
+Xử lý lỗi: Nếu folder rỗng hoặc file lỗi, API phải trả về thông báo lỗi thân thiện để Frontend hiển thị Alert.
+
+Lưu ý cho bạn: Khi demo, hãy chuẩn bị sẵn một folder chứa 1 file PDF dài (ví dụ quy định công ty) và 1 file Excel (ví dụ danh sách sản phẩm/giá bán). Khi bạn nhấn nút Sync trên VueJS và thấy số lượng chunk nhảy lên, khách hàng sẽ thấy rất ấn tượng về "độ thực tế" của ứng dụng.

@@ -1,0 +1,109 @@
+version: '3.8'
+
+networks:
+  rag-network:
+    driver: bridge
+
+services:
+  # 1. AI Engine: Chạy Ollama local phục vụ RAG offline
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama_container
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+      - rag-network
+    restart: unless-stopped
+    # Nếu máy bạn có card đồ họa NVIDIA, hãy bỏ 5 dấu thăng (#) ở dưới để kích hoạt GPU:
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+    # 2. Database: MySQL 8.0 lưu lịch sử chat
+  mysql:
+    image: mysql:8.0
+    container_name: mysql_rag
+    environment:
+      MYSQL_ROOT_PASSWORD: root_password
+      MYSQL_DATABASE: rag_demo_db
+      MYSQL_ROOT_HOST: '%'
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      # Mount file SQL này vào thư mục init của MySQL.
+      # MySQL sẽ tự động chạy file này lần đầu tiên khi tạo database mới.
+      - ./backend/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - rag-network
+    restart: unless-stopped
+    # Thêm healthcheck để backend biết MySQL đã sẵn sàng chưa
+    healthcheck:
+      test: [ "CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-proot_password" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # 3. Backend Service: Python FastAPI kết nối LangChain & ChromaDB & MySQL
+  backend:
+    build: ./backend
+    container_name: fastapi_backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+      - ./data_source:/data_source
+      - vector_db_data:/vector_db
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+      - DATABASE_URL=mysql+pymysql://root:root_password@mysql:3306/rag_demo_db
+      - OPENAI_API_KEY=your_openai_key_here
+    networks:
+      - rag-network
+    depends_on:
+      mysql:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+    restart: unless-stopped
+
+  # 4. Frontend Service: Giao diện người dùng VueJS + Element Plus
+  frontend:
+    build: ./frontend
+    container_name: vuejs_frontend
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      # Tránh ghi đè node_modules từ máy host vào container khi dev
+      - /app/node_modules
+    networks:
+      - rag-network
+    depends_on:
+      - backend
+    restart: unless-stopped
+  # 5. Giao diện quản lý trực quan cho ChromaDB (Tự dựng bằng Nginx chính thức)
+  chromadb-ui:
+    image: nginx:alpine
+    container_name: chromadb_html_ui
+    ports:
+      - "8090:80"
+    volumes:
+      # Gắn thư mục chứa file index.html vừa tạo vào thư mục gốc của Nginx
+      - ./chroma_ui_dash:/usr/share/nginx/html:ro
+    networks:
+      - rag-network
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  ollama_data:
+  mysql_data:
+  vector_db_data:

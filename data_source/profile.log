@@ -1,0 +1,8 @@
+--- New Request ---
+Start: 23ms
+Vendor autoload: 42ms
+App bootstrap: 67ms
+Kernel make: 74ms
+Kernel handle: 189ms
+Response send: 195ms
+Terminate: 211ms

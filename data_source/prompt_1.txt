@@ -1,0 +1,90 @@
+Đây là một Master Prompt được thiết kế theo kiến trúc module hóa. Bạn có thể dán toàn bộ nội dung này vào một công cụ AI hỗ trợ code (như Claude 3.5 Sonnet, GPT-4o, hoặc Cursor) để nó tạo ra toàn bộ khung dự án cho bạn.
+
+Tôi đã cấu trúc prompt này tập trung vào các công nghệ bạn đã chọn: FastAPI, Vue 3 (Vite), LangChain và Element Plus.
+
+🚀 MASTER PROMPT: AI RAG SYSTEM DEMO
+Objective: Xây dựng một ứng dụng demo RAG (Retrieval-Augmented Generation) hoàn chỉnh. Hệ thống cho phép người dùng đặt câu hỏi dựa trên dữ liệu từ các file PDF và Excel trong một thư mục cục bộ.
+
+MODULE 1: PROJECT STRUCTURE & ENVIRONMENT
+Hãy tạo một dự án với cấu trúc thư mục như sau:
+
+/backend: FastAPI application.
+
+/frontend: Vue 3 + Vite + Element Plus.
+
+/data_source: Thư mục chứa các file .pdf và .xlsx mẫu.
+
+/vector_db: Thư mục lưu trữ cơ sở dữ liệu vector ChromaDB.
+
+Yêu cầu kỹ thuật:
+
+Backend: Python 3.10+, FastAPI, LangChain, OpenAI API (hoặc Ollama), ChromaDB, Pandas, PyPDF2.
+
+Frontend: Vue 3 (Composition API), Vite, Element Plus, Axios, Lucide Icons.
+
+MODULE 2: BACKEND - DATA INGESTION & RAG LOGIC
+Viết code cho backend/main.py và backend/core/rag_engine.py thực hiện các nhiệm vụ:
+
+Extract & Chunking:
+
+PDF: Sử dụng PyPDFLoader và RecursiveCharacterTextSplitter (chunk_size=1000, overlap=200).
+
+Excel: Sử dụng Pandas để biến mỗi hàng thành một document riêng biệt, format theo dạng Column_Name: Value.
+
+Vector Store:
+
+Sử dụng ChromaDB làm database lưu trữ cục bộ tại thư mục /vector_db.
+
+Sử dụng OpenAIEmbeddings (hoặc HuggingFace local embeddings).
+
+RAG Chain:
+
+Thiết lập một RetrievalQA chain.
+
+Custom Prompt: Yêu cầu LLM chỉ trả lời dựa trên context được cung cấp. Nếu không có trong dữ liệu, hãy trả lời "Tôi không tìm thấy thông tin này trong tài liệu của bạn".
+
+Source Citations: Trả về câu trả lời kèm theo metadata (tên file, trang hoặc dòng trong Excel) để hiển thị nguồn.
+
+MODULE 3: BACKEND - API ENDPOINTS
+Thiết lập các API bằng FastAPI:
+
+POST /api/ingest: Quét thư mục /data_source, xử lý file và lưu vào ChromaDB. Trả về số lượng chunks đã tạo.
+
+POST /api/chat: Nhận câu hỏi từ user, thực hiện truy vấn RAG và trả về câu trả lời + danh sách nguồn trích dẫn.
+
+GET /api/files: Danh sách các file hiện có trong thư mục nguồn.
+
+MODULE 4: FRONTEND - UI/UX DESIGN (ELEMENT PLUS)
+Xây dựng giao diện Vue 3 chuyên nghiệp với các thành phần:
+
+Layout: Giao diện Dashboard với Sidebar bên trái (Quản lý file) và khu vực chính bên phải (Chat interface).
+
+Knowledge Management (Sidebar):
+
+Hiển thị danh sách file PDF/Excel.
+
+Nút "Sync Data" để gọi API /ingest kèm hiệu ứng Loading.
+
+Chat Window:
+
+Sử dụng v-for để hiển thị tin nhắn (User vs AI).
+
+Tin nhắn của AI phải có phần "Sources" (dùng el-tag hoặc el-collapse) để liệt kê các file tài liệu đã tham chiếu.
+
+Prompt Configuration (Advanced):
+
+Một tab hoặc dialog cho phép user chỉnh sửa "System Prompt" để test cách AI phản hồi.
+
+MODULE 5: INSTRUCTIONS FOR EXECUTION
+Cung cấp file requirements.txt cho Python.
+
+Cung cấp file package.json cho VueJS.
+
+Hướng dẫn cách cấu hình .env cho OpenAI API Key.
+
+Viết file README.md ngắn gọn cách chạy demo (Backend start, Frontend start).
+
+Note for AI: "Hãy ưu tiên viết mã nguồn sạch, có comment tiếng Việt. Đảm bảo xử lý lỗi (Exception Handling) khi file bị lỗi hoặc không đọc được."
+
+Gợi ý cách sử dụng Prompt này:
+Bạn muốn bắt đầu code ngay hoặc cần giải thích sâu hơn về một module cụ thể. */}
