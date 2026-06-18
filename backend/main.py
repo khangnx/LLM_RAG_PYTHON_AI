@@ -6,37 +6,37 @@ Hỗ trợ đọc nhiều định dạng file: PDF, Excel, Word, TXT, LOG, Power
 Lưu lịch sử chat vào MySQL thông qua SQLAlchemy.
 """
 
-import os
-import time
-import logging
-from datetime import datetime
-from fastapi import APIRouter, HTTPException
-import chromadb
+import os # Để thao tác với file hệ thống và biến môi trường
+import time # Dùng cho retry khi kết nối MySQL trong startup event
+import logging # Để ghi log chi tiết cho quá trình ingest và chat
+from datetime import datetime # Dùng để timestamp cho lịch sử chat và audit log
+from fastapi import APIRouter, HTTPException # Dùng để tạo router và trả lỗi HTTP
+import chromadb # Dùng để kết nối trực tiếp tới ChromaDB (Docker Volume /vector_db)
 
-from fastapi import FastAPI, HTTPException, Depends
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-import pandas as pd
+from fastapi import FastAPI, HTTPException, Depends # Dùng để tạo app FastAPI và xử lý lỗi HTTP
+from fastapi.middleware.cors import CORSMiddleware # Dùng để cấu hình CORS cho phép VueJS gọi API từ container
+from pydantic import BaseModel # Dùng để định nghĩa các model dữ liệu cho request/response
+import pandas as pd # Dùng để đọc file Excel (.xlsx, .xls) và xử lý dữ liệu dạng bảng
 
 # LangChain components
-from langchain_community.document_loaders import PyPDFLoader, TextLoader
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_core.documents import Document
-from langchain_community.vectorstores import Chroma
-from langchain_community.llms import Ollama
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain_core.runnables import RunnablePassthrough
-from langchain_core.output_parsers import StrOutputParser
+from langchain_community.document_loaders import PyPDFLoader, TextLoader # Dùng để đọc file PDF và TXT/LOG
+from langchain_text_splitters import RecursiveCharacterTextSplitter # Dùng để cắt nhỏ văn bản thành các chunk
+from langchain_core.documents import Document # Dùng để tạo các Document object từ văn bản và metadata
+from langchain_community.vectorstores import Chroma # Dùng để lưu trữ vector embeddings vào ChromaDB
+from langchain_community.llms import Ollama # Dùng để kết nối với Ollama LLM (local hoặc remote)
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder # Dùng để tạo prompt cho chat và quản lý lịch sử hội thoại
+from langchain_core.runnables import RunnablePassthrough # Dùng để tạo các runnable chain cho RAG
+from langchain_core.output_parsers import StrOutputParser # Dùng để parse output từ LLM thành chuỗi văn bản
 
 # Thêm module cho trí nhớ hội thoại (Conversational Memory)
-from langchain.chains import create_history_aware_retriever, create_retrieval_chain
-from langchain.chains.combine_documents import create_stuff_documents_chain
-from langchain_community.chat_message_histories import ChatMessageHistory
-from langchain_core.chat_history import BaseChatMessageHistory
-from langchain_core.runnables.history import RunnableWithMessageHistory
+from langchain.chains import create_history_aware_retriever, create_retrieval_chain # Dùng để tạo retrieval chain có khả năng hiểu ngữ cảnh từ lịch sử chat
+from langchain.chains.combine_documents import create_stuff_documents_chain # Dùng để ráp các chunk tài liệu vào prompt cuối cùng
+from langchain_community.chat_message_histories import ChatMessageHistory # Dùng để lưu trữ lịch sử chat trong MySQL thay vì in-memory
+from langchain_core.chat_history import BaseChatMessageHistory # Dùng để định nghĩa interface cho lịch sử chat
+from langchain_core.runnables.history import RunnableWithMessageHistory # Dùng để wrap chain với khả năng truy xuất lịch sử chat từ DB
 
 # Embedding model (HuggingFace local, không cần API key)
-from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_community.embeddings import HuggingFaceEmbeddings # Dùng để tạo vector embeddings từ văn bản bằng mô hình HuggingFace
 
 # Thư viện đọc file Word và PowerPoint
 import docx
@@ -56,8 +56,10 @@ logger = logging.getLogger(__name__)
 
 # =====================================================
 # KHỞI TẠO EMBEDDING MODEL
+# HuggingFaceEmbeddings là một lớp trong LangChain dùng để tạo vector embeddings từ văn bản bằng các mô hình HuggingFace.
+# Các mô hình phổ biến: "paraphrase-multilingual-MiniLM-L12-v2", "sentence-transformers/all-MiniLM-L6-v2", "sentence-transformers/all-mpnet-base-v2"
 # =====================================================
-embeddings = HuggingFaceEmbeddings(model_name="paraphrase-multilingual-MiniLM-L12-v2")
+embeddings = HuggingFaceEmbeddings(model_name="paraphrase-multilingual-MiniLM-L12-v2") # Dùng mô hình nhỏ gọn, đa ngôn ngữ, phù hợp cho RAG demo , là mô hình embedding phổ biến, có thể chạy trên CPU, không cần GPU. Nếu muốn dùng mô hình lớn hơn, hãy thay model_name bằng mô hình khác từ HuggingFace.
 
 # =====================================================
 # KHỞI TẠO FASTAPI APP
@@ -83,7 +85,15 @@ VECTOR_DB_DIR = "/vector_db"
 # KHỞI TẠO LLM OLLAMA
 # =====================================================
 OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://ollama:11434")
-llm = Ollama(base_url=OLLAMA_HOST, model="llama3")
+# llm = Ollama(base_url=OLLAMA_HOST, model="llama3")
+llm = Ollama(
+    base_url=OLLAMA_HOST, 
+    model="qwen2.5:1.5b",
+    num_ctx=1024,
+    temperature=0.1,
+    verbose=True,
+    timeout=60
+    )
 
 
 # =====================================================
@@ -109,7 +119,7 @@ def on_startup():
 
 
 # =====================================================
-# PYDANTIC MODELS
+# PYDANTIC MODELS CHO REQUEST BODY
 # =====================================================
 class ChatRequest(BaseModel):
     question: str
@@ -147,8 +157,11 @@ def build_chat_history_from_db(session_id: str, db: Session) -> BaseChatMessageH
 # =====================================================
 
 # Bộ cắt nhỏ văn bản dùng chung cho tất cả loại file
-text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200) # Cắt nhỏ văn bản thành các chunk ~1000 ký tự, chồng lấn 200 ký tự để AI hiểu ngữ cảnh tốt hơn
 
+#Tại sao file .log và excel không dùng cái này text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+#Lý do cốt lõi là: RecursiveCharacterTextSplitter là bộ cắt văn bản dựa trên ký tự và dấu câu cấu trúc ngữ nghĩa (dấu xuống dòng kép \n\n, dấu xuống dòng đơn \n, dấu cách  ). Nó được sinh ra để xử lý văn bản tự nhiên dạng văn xuôi (như sách, báo, điều khoản pháp lý, quy hoạch).
+#Đối với file .log và file Excel, nếu bạn cố tình dùng bộ cắt này với thông số chunk_size=1000, bạn sẽ làm gãy hoàn toàn cấu trúc dữ liệu, khiến AI không thể đọc hiểu được.
 
 def process_pdf(file_path: str) -> list:
     """
@@ -546,13 +559,13 @@ def chat_with_rag(request: ChatRequest, db: Session = Depends(get_db)):
     try:
         # Kết nối VectorDB và tìm 5 đoạn tài liệu liên quan nhất
         vector_store = Chroma(persist_directory=VECTOR_DB_DIR, embedding_function=embeddings)
-        retriever = vector_store.as_retriever(search_kwargs={"k": 10})
+        retriever = vector_store.as_retriever(search_kwargs={"k": 10}) # Tăng k=10 để lấy nhiều chunk hơn, sau đó lọc trùng lặp và exact-match
         relevant_docs = retriever.invoke(request.question)
 
         # Bổ sung: tìm kiếm thêm bằng keyword exact-match (chỉ áp dụng với mã sản phẩm/từ khóa kỹ thuật)
         # Regex: Từ có chứa ít nhất 1 chữ số (ví dụ SP001, 100m2) HOẶC từ in hoa hoàn toàn >= 3 ký tự (VND, VAT)
-        import re
-        from langchain_core.documents import Document
+        import re # Dùng regex để tìm keyword quan trọng trong câu hỏi
+        from langchain_core.documents import Document # Dùng để tạo Document object từ văn bản và metadata
         meaningful_tokens = re.findall(r'[a-zA-Z_]*\d+[a-zA-Z0-9_]*|[A-Z_]{3,}', request.question)
         if meaningful_tokens:
             keyword_query = meaningful_tokens[0] # Lấy từ khóa quan trọng nhất để tìm exact match

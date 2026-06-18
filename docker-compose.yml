@@ -16,6 +16,15 @@ services:
     networks:
       - rag-network
     restart: unless-stopped
+  ollama-pull-model:
+    image: curlimages/curl:latest
+    container_name: ollama_pull_model
+    networks:
+      - rag-network
+    depends_on:
+      - ollama
+    # Lệnh ra lệnh cho Ollama kéo bản 1.5b về ngầm
+    entrypoint: [ "sh", "-c", "sleep 5 && curl -X POST http://ollama:11434/api/pull -d '{\"name\": \"qwen2.5:1.5b\"}'" ]
     # Nếu máy bạn có card đồ họa NVIDIA, hãy bỏ 5 dấu thăng (#) ở dưới để kích hoạt GPU:
     # deploy:
     #   resources:
