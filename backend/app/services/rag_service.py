@@ -1,5 +1,5 @@
 from langchain_community.vectorstores import Chroma
-from langchain_community.embeddings import SentenceTransformerEmbeddings
+from langchain_community.embeddings import HuggingFaceEmbeddings
 import os
 
 class RAGService:
@@ -9,9 +9,9 @@ class RAGService:
         backend_dir = os.path.dirname(os.path.dirname(current_dir))
         self.persist_directory = os.path.join(backend_dir, "vector_db")
         
-        # Load mô hình nhúng
+        # Load mô hình nhúng (Cần giống hệt mô hình dùng để Ingest trong main.py)
         try:
-            self.embeddings = SentenceTransformerEmbeddings(model_name="keepitreal/vietnamese-sbert")
+            self.embeddings = HuggingFaceEmbeddings(model_name="paraphrase-multilingual-MiniLM-L12-v2")
             
             # Load ChromaDB
             self.vector_db = Chroma(
@@ -39,3 +39,19 @@ class RAGService:
                 return f"Không tìm thấy thông tin quy hoạch cụ thể cho khu vực: {address_query}."
         except Exception as e:
             return f"Lỗi tra cứu: {str(e)}"
+
+    def query_general_docs(self, query: str) -> str:
+        """
+        Tra cứu tài liệu nội bộ chung, không đính kèm các câu cứng nhắc về quy hoạch.
+        """
+        if not self.vector_db:
+            return ""
+            
+        try:
+            docs = self.vector_db.similarity_search(query, k=4)
+            if docs:
+                return "\n\n".join([doc.page_content for doc in docs])
+            else:
+                return ""
+        except Exception:
+            return ""

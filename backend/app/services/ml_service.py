@@ -42,14 +42,12 @@ class MLPredictorService:
         if self.model is None:
             return 0.0
             
-        # 1. Tính toán Feature Engineering bằng KNN
-        # Giả lập preprocessor đã có reference_data (Trong thực tế cần save/load thêm reference_data của preprocessor)
-        # Tạm thời sinh giá KNN ngẫu nhiên có logic để test nếu preprocessor chưa sẵn sàng
+        # 1. Tính toán neighbor_avg_price_per_m2 qua KNN
         neighbor_price = self.preprocessor.transform_inference(latitude, longitude)
         if neighbor_price == 0.0:
-            neighbor_price = 150.0 # Tạm gán 150 triệu/m2 nếu lỗi
-            
-        # 2. Xây dựng DataFrame đầu vào
+            neighbor_price = 150.0  # Fallback nếu KNN chưa fit
+
+        # 2. Xây dựng DataFrame với toàn bộ feature có thể có
         df_input = pd.DataFrame([{
             'latitude': latitude,
             'longitude': longitude,
@@ -59,14 +57,30 @@ class MLPredictorService:
             'interior_score': interior_score,
             'alley_width': alley_width
         }])
-        
-        # 3. Scale dữ liệu
-        features = ['latitude', 'longitude', 'land_area', 'neighbor_avg_price_per_m2', 'floors', 'interior_score', 'alley_width']
+
+        # 3. Chỉ scale những cột mà scaler đã được fit (tránh ValueError feature mismatch)
         if self.scaler:
-            df_input[features] = self.scaler.transform(df_input[features])
-            
-        # 4. Dự báo
-        predicted_price = self.model.predict(df_input)[0]
-        
-        # Làm tròn 2 chữ số thập phân
+            try:
+                # Lấy danh sách cột mà scaler biết (từ lúc training)
+                scaler_features = list(self.scaler.feature_names_in_)
+            except AttributeError:
+                # sklearn cũ không có feature_names_in_, dùng toàn bộ cột có trong df
+                scaler_features = [c for c in df_input.columns]
+
+            # Chỉ lấy cột nào vừa có trong df_input vừa có trong scaler
+            cols_to_scale = [c for c in scaler_features if c in df_input.columns]
+            df_input[cols_to_scale] = self.scaler.transform(df_input[cols_to_scale])
+
+        # 4. Dự báo — chỉ đưa vào model những cột model biết
+        try:
+            model_features = self.model.get_booster().feature_names
+            if model_features:
+                available = [c for c in model_features if c in df_input.columns]
+                predicted_price = self.model.predict(df_input[available])[0]
+            else:
+                predicted_price = self.model.predict(df_input)[0]
+        except Exception:
+            predicted_price = self.model.predict(df_input)[0]
+
         return round(float(predicted_price), 2)
+
