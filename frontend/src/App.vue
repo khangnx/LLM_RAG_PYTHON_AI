@@ -101,17 +101,25 @@
 
             <!-- Input -->
             <div class="chat-input-area">
-              <el-input
-                v-model="chatInput"
-                type="textarea"
-                :rows="3"
-                :placeholder="activeSessionId ? 'Nhập câu hỏi (Enter để gửi)...' : 'Vui lòng tạo hoặc chọn một cuộc trò chuyện trước'"
-                resize="none"
-                :disabled="!activeSessionId"
-                @keydown.enter.exact.prevent="sendMessage"
-              />
+              <input type="file" ref="fileInputRef" style="display: none" @change="handleFileUpload" accept="image/*,video/*,.pdf" />
+              <el-button @click="triggerFileInput" :icon="Paperclip" circle size="large" class="attach-btn" :disabled="!activeSessionId" />
+              <div class="input-wrapper" style="flex: 1; display: flex; flex-direction: column; gap: 8px;">
+                <div v-if="selectedFile" class="selected-file-preview">
+                  <span class="file-name">📎 {{ selectedFile.name }}</span>
+                  <el-icon class="close-icon" @click="selectedFile = null"><Close /></el-icon>
+                </div>
+                <el-input
+                  v-model="chatInput"
+                  type="textarea"
+                  :rows="3"
+                  :placeholder="activeSessionId ? 'Nhập câu hỏi (Enter để gửi)...' : 'Vui lòng tạo hoặc chọn một cuộc trò chuyện trước'"
+                  resize="none"
+                  :disabled="!activeSessionId"
+                  @keydown.enter.exact.prevent="sendMessage"
+                />
+              </div>
               <el-button type="primary" :icon="Promotion" circle size="large" class="send-btn"
-                :disabled="!chatInput.trim() || isChatting || !activeSessionId" @click="sendMessage" />
+                :disabled="(!chatInput.trim() && !selectedFile) || isChatting || !activeSessionId" @click="sendMessage" />
             </div>
           </el-main>
 
@@ -164,7 +172,7 @@
 import { ref, onMounted, nextTick } from 'vue';
 import axios from 'axios';
 import { ElMessage } from 'element-plus';
-import { Refresh, Promotion, Document, Grid, Loading, Plus, ChatRound } from '@element-plus/icons-vue';
+import { Refresh, Promotion, Document, Grid, Loading, Plus, ChatRound, Paperclip, Close } from '@element-plus/icons-vue';
 
 // =====================================================
 // TYPES & INTERFACES
@@ -208,6 +216,23 @@ const messages = ref<Message[]>([]);
 const chatInput = ref('');
 const isChatting = ref(false);
 const chatContainerRef = ref<HTMLElement | null>(null);
+
+// =====================================================
+// STATE: UPLOAD
+// =====================================================
+const selectedFile = ref<File | null>(null);
+const fileInputRef = ref<HTMLInputElement | null>(null);
+
+const triggerFileInput = () => {
+  if (fileInputRef.value) fileInputRef.value.click();
+};
+
+const handleFileUpload = (event: Event) => {
+  const target = event.target as HTMLInputElement;
+  if (target.files && target.files.length > 0) {
+    selectedFile.value = target.files[0];
+  }
+};
 
 // =====================================================
 // STATE: LỊCH SỬ (Tab 2)
@@ -349,36 +374,68 @@ const handleIngest = async () => {
 // =====================================================
 const sendMessage = async () => {
   const content = chatInput.value.trim();
-  if (!content || isChatting.value || !activeSessionId.value) return;
+  const fileToUpload = selectedFile.value;
+  
+  if ((!content && !fileToUpload) || isChatting.value || !activeSessionId.value) return;
 
-  messages.value.push({ id: Date.now(), sender: 'user', text: content });
+  // Hiển thị tin nhắn của user trên UI
+  let userText = content;
+  if (fileToUpload) {
+    userText = `[Đã đính kèm file: ${fileToUpload.name}]\n${content}`;
+  }
+  messages.value.push({ id: Date.now(), sender: 'user', text: userText });
+  
   chatInput.value = '';
+  selectedFile.value = null; // Clear immediately
   scrollToBottom();
   isChatting.value = true;
 
   try {
-    const response = await axios.post(`${API_BASE_URL}/chat`, {
-      question: content,
-      session_id: activeSessionId.value
+    const formData = new FormData();
+    formData.append('user_query', content || 'Vui lòng phân tích file đính kèm');
+    // Mặc dù API Agent mới chưa lưu session vào DB, nhưng gửi lên phòng hờ
+    formData.append('session_id', activeSessionId.value);
+    
+    if (fileToUpload) {
+      formData.append('media_file', fileToUpload);
+    }
+
+    // GỌI ENDPOINT MỚI CỦA MULTIMODAL AI AGENT
+    const response = await axios.post(`${API_BASE_URL}/v1/agent/chat`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
     });
-    const { answer, sources } = response.data;
+    
+    // Parse dữ liệu từ Endpoint mới
+    const resData = response.data.data;
+    let answerText = resData.report;
+    
+    // Nối thêm thông tin định giá nếu rẽ nhánh BĐS
+    if (resData.selected_tab === 'estate_agent' && resData.predicted_price) {
+      answerText = `🏡 **KẾT QUẢ ĐỊNH GIÁ: ${resData.predicted_price} TỶ VNĐ**\n\n` + answerText;
+    }
 
-    messages.value.push({ id: Date.now() + 1, sender: 'ai', text: answer, sources: sources || [] });
+    messages.value.push({ 
+      id: Date.now() + 1, 
+      sender: 'ai', 
+      text: answerText, 
+      sources: [] // Bỏ tạm phần sources cũ đi vì API Agent gộp report luôn
+    });
 
-    // Cập nhật tiêu đề session nếu là tin nhắn đầu (backend đã đổi title thành câu hỏi)
+    // Cập nhật tiêu đề session
     const session = sessions.value.find(s => s.id === activeSessionId.value);
     if (session && session.title === 'Cuộc trò chuyện mới') {
-      session.title = content.substring(0, 60);
+      session.title = content ? content.substring(0, 60) : 'Phân tích file';
       activeSessionTitle.value = session.title;
     }
 
     if (activeTab.value === 'history') await fetchHistory();
   } catch (error: any) {
-    ElMessage.error(error.response?.data?.detail || 'Lỗi kết nối đến server AI.');
-    messages.value.push({ id: Date.now() + 1, sender: 'ai', text: 'Xin lỗi, tôi đang gặp sự cố kỹ thuật.' });
+    ElMessage.error(error.response?.data?.detail || 'Lỗi kết nối đến server AI Agent.');
+    messages.value.push({ id: Date.now() + 1, sender: 'ai', text: 'Xin lỗi, AI Agent đang gặp sự cố.' });
   } finally {
     isChatting.value = false;
     scrollToBottom();
+    if (fileInputRef.value) fileInputRef.value.value = ''; // Reset input file
   }
 };
 
@@ -671,6 +728,30 @@ onMounted(async () => {
   display: flex;
   align-items: flex-end;
   gap: 12px;
+  flex-shrink: 0;
+}
+
+.selected-file-preview {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background-color: #f0f9eb;
+  color: #67c23a;
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 13px;
+  border: 1px solid #e1f3d8;
+  align-self: flex-start;
+}
+
+.selected-file-preview .close-icon {
+  cursor: pointer;
+  margin-left: 5px;
+  color: #f56c6c;
+}
+
+.attach-btn {
+  margin-bottom: 5px;
   flex-shrink: 0;
 }
 

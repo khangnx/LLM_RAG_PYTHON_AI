@@ -15,3 +15,13 @@ python-pptx
 pymysql
 sqlalchemy
 alembic==1.13.1
+torch
+torchvision
+ultralytics
+easyocr
+opencv-python-headless
+xgboost
+scikit-learn
+geopy
+langgraph
+python-multipart

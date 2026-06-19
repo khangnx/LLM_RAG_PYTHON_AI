@@ -9,6 +9,11 @@ Lưu lịch sử chat vào MySQL thông qua SQLAlchemy.
 import os # Để thao tác với file hệ thống và biến môi trường
 import time # Dùng cho retry khi kết nối MySQL trong startup event
 import logging # Để ghi log chi tiết cho quá trình ingest và chat
+import ssl
+import re
+import urllib.parse
+import urllib.request
+from html import unescape
 from datetime import datetime # Dùng để timestamp cho lịch sử chat và audit log
 from fastapi import APIRouter, HTTPException # Dùng để tạo router và trả lỗi HTTP
 import chromadb # Dùng để kết nối trực tiếp tới ChromaDB (Docker Volume /vector_db)
@@ -150,6 +155,75 @@ def build_chat_history_from_db(session_id: str, db: Session) -> BaseChatMessageH
         else:
             history.add_ai_message(msg.content)
     return history
+
+
+def web_search_fallback(query: str, max_results: int = 3) -> list[dict]:
+    """
+    Tra cứu web khi không tìm thấy thông tin trong tài liệu nội bộ.
+    Dùng Bing làm nguồn chính, fallback sang DuckDuckGo HTML nếu cần.
+    """
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/120.0 Safari/537.36"
+        ),
+        "Accept-Language": "vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Referer": "https://www.bing.com/",
+    }
+
+    def fetch_html(url: str) -> str:
+        req = urllib.request.Request(url, headers=headers)
+        ctx = ssl.create_default_context()
+        with urllib.request.urlopen(req, context=ctx, timeout=20) as response:
+            raw = response.read()
+            try:
+                return raw.decode("utf-8", errors="ignore")
+            except Exception:
+                return raw.decode("latin-1", errors="ignore")
+
+    def parse_bing(html_text: str) -> list[dict]:
+        results = []
+        for result_block in re.finditer(r'<li class="b_algo">(.*?)</li>', html_text, flags=re.I | re.S):
+            block = result_block.group(1)
+            match = re.search(r'<h2>\s*<a[^>]+href="([^"]+)"[^>]*>(.*?)</a>', block, flags=re.I | re.S)
+            if not match:
+                continue
+            href = unescape(match.group(1).strip())
+            title = re.sub(r'<.*?>', '', match.group(2)).strip()
+            if href and title:
+                results.append({"title": title, "link": href})
+            if len(results) >= max_results:
+                break
+        return results
+
+    def parse_duckduckgo(html_text: str) -> list[dict]:
+        results = []
+        for match in re.finditer(r'<a[^>]+rel="nofollow"[^>]+href="([^"]+)"[^>]*>(.*?)</a>', html_text, flags=re.I | re.S):
+            href = unescape(match.group(1).strip())
+            title = re.sub(r'<.*?>', '', match.group(2)).strip()
+            if href.startswith("http") and title:
+                results.append({"title": title, "link": href})
+            if len(results) >= max_results:
+                break
+        return results
+
+    try:
+        bing_url = "https://www.bing.com/search?q=" + urllib.parse.quote_plus(query)
+        html_text = fetch_html(bing_url)
+        results = parse_bing(html_text)
+        if results:
+            return results[:max_results]
+
+        ddg_url = "https://html.duckduckgo.com/html/?q=" + urllib.parse.quote_plus(query)
+        html_text = fetch_html(ddg_url)
+        results = parse_duckduckgo(html_text)
+        return results[:max_results]
+    except Exception as e:
+        logger.warning(f"⚠️ Web search fallback failed: {e}")
+        return []
 
 
 # =====================================================
@@ -556,6 +630,7 @@ def chat_with_rag(request: ChatRequest, db: Session = Depends(get_db)):
     if not session_obj:
         raise HTTPException(status_code=404, detail="Phiên hội thoại không tồn tại. Hãy tạo mới.")
 
+    web_search_results = []
     try:
         # Kết nối VectorDB và tìm 5 đoạn tài liệu liên quan nhất
         vector_store = Chroma(persist_directory=VECTOR_DB_DIR, embedding_function=embeddings)
@@ -660,6 +735,31 @@ Ngữ cảnh (Context):
         retrieved_docs = response["context"]
 
         # ---------------------------------------------------------
+        # Nếu câu trả lời nội bộ không đủ, dùng web search fallback
+        # ---------------------------------------------------------
+        web_search_results = []
+        fallback_triggers = [
+            "tôi không tìm thấy thông tin này trong tài liệu của bạn",
+            "không có thông tin chi tiết",
+            "không thể cung cấp",
+            "xin lỗi",
+            "i'm sorry",
+        ]
+        normalized_answer = answer.lower() if isinstance(answer, str) else ""
+        if not answer or not answer.strip() or any(trigger in normalized_answer for trigger in fallback_triggers):
+            logger.info("🔎 Không tìm thấy dữ liệu nội bộ hoặc câu trả lời thiếu chi tiết, thực hiện tra cứu web fallback.")
+            web_search_results = web_search_fallback(request.question, max_results=5)
+            if web_search_results:
+                answer_lines = [
+                    "Tôi không tìm thấy câu trả lời chính xác trong tài liệu nội bộ, nên đã tra cứu web và tìm được các kết quả sau:",
+                ]
+                for idx, item in enumerate(web_search_results, start=1):
+                    answer_lines.append(f"{idx}. {item['title']} - {item['link']}")
+                answer = "\n".join(answer_lines)
+            else:
+                answer = "Tôi không tìm thấy câu trả lời trong tài liệu nội bộ và không thể truy cập kết quả web vào lúc này."
+
+        # ---------------------------------------------------------
         # RENDER PROMPT LOG (để hiển thị cho khách hàng xem)
         # ---------------------------------------------------------
         # Lấy context cuối cùng mà chain đã dùng để trả lời
@@ -721,6 +821,12 @@ Ngữ cảnh (Context):
         # Tránh thêm nguồn trùng lặp
         if source_info not in sources:
             sources.append(source_info)
+
+    if web_search_results:
+        for item in web_search_results:
+            web_source = {"file": item.get("title", "Kết quả web"), "location": item.get("link", "")}
+            if web_source not in sources:
+                sources.append(web_source)
 
     return {
         "answer": answer,
@@ -784,3 +890,7 @@ def get_chroma_collections():
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+# Tích hợp Multimodal Agent Router
+from app.api.agent_router import router as agent_router
+app.include_router(agent_router, prefix="/api/v1/agent", tags=["Multimodal Agent"])
