@@ -49,6 +49,12 @@
                 <el-button type="success" :icon="Refresh" :loading="isIngesting" @click="handleIngest" class="full-width">
                   Đồng bộ hệ thống
                 </el-button>
+                <el-button type="danger" :icon="Cpu" :loading="isRunningTraining" @click="handleRunTraining" class="full-width" style="margin-top: 8px;">
+                  Run Tranning
+                </el-button>
+                <el-button type="warning" :icon="Document" :loading="isProcessingSalesUploads" @click="handleSalesUploadProcess" class="full-width" style="margin-top: 8px;">
+                  Xử lý sales uploads (Cũ)
+                </el-button>
               </div>
               <p class="sidebar-section-title">📁 TÀI LIỆU HIỆN CÓ</p>
               <div v-loading="isLoadingFiles" class="file-list">
@@ -58,6 +64,23 @@
                     <component :is="getFileIcon(file.name)" />
                   </el-icon>
                   <span class="file-name" :title="file.name">{{ file.name }}</span>
+                </div>
+              </div>
+              <el-divider />
+              <p class="sidebar-section-title">📂 Sales Uploads</p>
+              <div v-loading="isLoadingSalesUploads" class="file-list">
+                <div v-if="unprocessedFolders.length === 0 && processedFolders.length === 0 && !isLoadingSalesUploads" class="no-files">Chưa có folder sales uploads nào</div>
+                <div v-if="unprocessedFolders.length > 0">
+                  <p class="folder-section-title">Chưa xử lý</p>
+                  <div v-for="folder in unprocessedFolders" :key="folder" class="file-item">
+                    <span class="file-name">{{ folder }}</span>
+                  </div>
+                </div>
+                <div v-if="processedFolders.length > 0" style="margin-top: 12px;">
+                  <p class="folder-section-title">Đã xử lý</p>
+                  <div v-for="folder in processedFolders" :key="folder" class="file-item">
+                    <span class="file-name">{{ folder }}</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -172,7 +195,7 @@
 import { ref, onMounted, nextTick } from 'vue';
 import axios from 'axios';
 import { ElMessage } from 'element-plus';
-import { Refresh, Promotion, Document, Grid, Loading, Plus, ChatRound, Paperclip, Close } from '@element-plus/icons-vue';
+import { Refresh, Promotion, Document, Grid, Loading, Plus, ChatRound, Paperclip, Close, Cpu } from '@element-plus/icons-vue';
 
 // =====================================================
 // TYPES & INTERFACES
@@ -216,6 +239,11 @@ const messages = ref<Message[]>([]);
 const chatInput = ref('');
 const isChatting = ref(false);
 const chatContainerRef = ref<HTMLElement | null>(null);
+const unprocessedFolders = ref<string[]>([]);
+const processedFolders = ref<string[]>([]);
+const isLoadingSalesUploads = ref(false);
+const isProcessingSalesUploads = ref(false);
+const isRunningTraining = ref(false);
 
 // =====================================================
 // STATE: UPLOAD
@@ -369,6 +397,51 @@ const handleIngest = async () => {
   }
 };
 
+const fetchSalesUploadFolders = async () => {
+  isLoadingSalesUploads.value = true;
+  try {
+    const response = await axios.get(`${API_BASE_URL}/sales_uploads/folders`);
+    unprocessedFolders.value = response.data.unprocessed_folders || [];
+    processedFolders.value = response.data.processed_folders || [];
+  } catch (error: any) {
+    ElMessage.error(error.response?.data?.detail || 'Không thể tải danh sách sales upload.');
+    unprocessedFolders.value = [];
+    processedFolders.value = [];
+  } finally {
+    isLoadingSalesUploads.value = false;
+  }
+};
+
+const handleSalesUploadProcess = async () => {
+  isProcessingSalesUploads.value = true;
+  try {
+    const response = await axios.post(`${API_BASE_URL}/sales_uploads/process`);
+    const processedCount = response.data.processed_count ?? 0;
+    ElMessage.success(`Đã xử lý ${processedCount} folder sales uploads.`);
+    await fetchSalesUploadFolders();
+  } catch (error: any) {
+    ElMessage.error(error.response?.data?.detail || 'Lỗi khi xử lý sales uploads.');
+  } finally {
+    isProcessingSalesUploads.value = false;
+  }
+};
+
+// =====================================================
+// API: RUN TRAINING (BATCH PROCESSOR)
+// =====================================================
+const handleRunTraining = async () => {
+  isRunningTraining.value = true;
+  try {
+    const response = await axios.post(`${API_BASE_URL}/v1/agent/trigger-training-batch`);
+    ElMessage.success(response.data.message || 'Run Tranning thành công!');
+    await fetchSalesUploadFolders(); // Refresh lại danh sách thư mục (sẽ thấy thêm PROCESSED_)
+  } catch (error: any) {
+    ElMessage.error(error.response?.data?.detail || 'Lỗi khi Run Tranning.');
+  } finally {
+    isRunningTraining.value = false;
+  }
+};
+
 // =====================================================
 // API: GỬI TIN NHẮN
 // =====================================================
@@ -467,7 +540,7 @@ const onTabClick = (tab: any) => {
 // LIFECYCLE
 // =====================================================
 onMounted(async () => {
-  await Promise.all([fetchFiles(), fetchSessions()]);
+  await Promise.all([fetchFiles(), fetchSessions(), fetchSalesUploadFolders()]);
 });
 </script>
 

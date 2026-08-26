@@ -57,3 +57,24 @@ async def chat_with_agent(
         "status": "success",
         "data": response_data
     }
+
+from ai_training_engine.batch_processor import SalesBatchProcessor
+from ai_training_engine.train import run_training_pipeline
+
+@router.post("/trigger-training-batch")
+def trigger_training_batch():
+    """
+    Kích hoạt tiến trình gom cụm dữ liệu Sales (OCR, YOLO, ViT) 
+    và nạp vào database để huấn luyện XGBoost.
+    """
+    try:
+        # 1. Quét file và nạp vào DB
+        processor = SalesBatchProcessor()
+        processor.run_pipeline()
+        
+        # 2. Trigger XGBoost Retrain với data mới
+        run_training_pipeline()
+        
+        return {"status": "success", "message": "Batch Processing & Retrain XGBoost đã hoàn tất thành công!"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}

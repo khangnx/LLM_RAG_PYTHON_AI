@@ -1,7 +1,8 @@
-import os
-import xgboost as xgb
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import mean_squared_error, mean_absolute_error
+# File này chứa class SpatialXGBoostTrainer, dùng để huấn luyện mô hình XGBoost Regressor dựa trên dữ liệu đã được tiền xử lý (preprocessed data). Mục tiêu là dự đoán giá trị bất động sản dựa vào các đặc trưng đầu vào.
+import os # Dùng để thao tác với hệ thống file, thư mục
+import xgboost as xgb # Dùng để huấn luyện mô hình XGBoost Regressor
+from sklearn.model_selection import train_test_split # Dùng để chia dữ liệu thành tập huấn luyện và tập kiểm tra
+from sklearn.metrics import mean_squared_error, mean_absolute_error # Dùng để đánh giá hiệu suất mô hình (MSE, MAE)
 
 class SpatialXGBoostTrainer:
     def __init__(self, models_dir=None):

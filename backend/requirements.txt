@@ -1,27 +1,30 @@
-fastapi==0.110.0
-uvicorn==0.28.0
-pydantic==2.6.4
-langchain==0.1.12
-langchain-community==0.0.28
-langchain-openai==0.0.8
-chromadb==0.4.24
-pandas==2.2.1
-openpyxl==3.1.2
-pypdf==4.1.0
-pydantic-settings==2.2.1
-sentence-transformers>=2.2.0,<3.0.0
-python-docx
-python-pptx
-pymysql
-sqlalchemy
-alembic==1.13.1
-torch
-torchvision
-ultralytics
-easyocr
-opencv-python-headless
-xgboost
-scikit-learn
-geopy
-langgraph
-python-multipart
+fastapi>=0.110.0
+uvicorn>=0.28.0 # Dùng để chạy ứng dụng FastAPI
+pydantic>=2.6.4 # Dùng để xác thực dữ liệu và tạo các mô hình dữ liệu
+langchain>=0.3.27,<1.0.0 # Dùng để xây dựng các ứng dụng AI dựa trên ngôn ngữ tự nhiên
+langchain-community>=0.3.27,<0.4.0 # Dùng để mở rộng các tính năng của LangChain với các tiện ích cộng đồng
+langchain-core>=0.3.72,<1.0.0 # Dùng cho các thành phần lõi mà ứng dụng import trực tiếp
+langchain-openai>=0.3.28,<1.0.0 # Dùng để tích hợp LangChain với OpenAI API
+langchain-text-splitters>=0.3.8,<1.0.0 # Dùng để cắt nhỏ văn bản thành các chunk
+chromadb>=0.5.0,<0.6.0 # Dùng để lưu trữ và truy vấn dữ liệu vector cho các mô hình học máy
+pandas>=2.2.1 # Dùng để xử lý và phân tích dữ liệu dạng bảng
+openpyxl>=3.1.2 # Dùng để làm việc với file Excel
+pypdf>=4.1.0 # Dùng để xử lý file PDF
+pydantic-settings>=2.2.1 # Dùng để quản lý các cài đặt cho Pydantic
+sentence-transformers>=2.2.0,<3.0.0 # Dùng để tạo các vector cho văn bản
+python-docx>=0.8.11 # Dùng để làm việc với file tài liệu Word
+python-pptx>=0.6.21 # Dùng để làm việc với file thuyết trình PowerPoint
+pymysql>=1.1.0 # Dùng để kết nối và tương tác với cơ sở dữ liệu MySQL
+sqlalchemy>=2.0.23 # Dùng để làm việc với cơ sở dữ liệu SQL
+alembic>=1.13.1 # Dùng để quản lý các bản ghi thay đổi trong cơ sở dữ liệu
+torch>=2.0.1 # Dùng để xây dựng và huấn luyện các mô hình học máy deep learning
+torchvision>=0.15.2 # Dùng để làm việc với các tác vụ liên quan đến hình ảnh trong học máy
+ultralytics>=8.0.205 # Dùng để làm việc với các mô hình YOLO cho phát hiện đối tượng
+easyocr>=1.7.0 # Dùng để nhận diện văn bản trong hình ảnh
+opencv-python-headless>=4.8.1.78 # Dùng để xử lý ảnh và video mà không cần giao diện người dùng
+xgboost>=1.7.3 # Dùng để xây dựng các mô hình học máy, đặc biệt là các mô hình boosting cho các tác vụ phân loại và hồi quy
+scikit-learn>=1.3.0 # Dùng để xây dựng các mô hình học máy và thực hiện các tác vụ phân loại, hồi quy, clustering, v.v.
+geopy>=2.3.0 # Dùng để tính toán khoảng cách địa lý và các phép toán liên quan đến vị trí
+langgraph>=0.1.0 # Dùng để tạo ra các luồng xử lý dữ liệu và mô hình hóa các quy trình phức tạp
+python-multipart>=0.0.6 # Dùng để upload file lên server
+SpeechRecognition>=3.8.1 # Dùng để nhận diện giọng nói

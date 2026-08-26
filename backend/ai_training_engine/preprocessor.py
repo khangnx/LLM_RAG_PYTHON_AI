@@ -1,9 +1,9 @@
-import pandas as pd
-import numpy as np
-from sklearn.neighbors import NearestNeighbors
-from sklearn.preprocessing import StandardScaler
-import joblib
-import os
+import pandas as pd # Dùng để xử lý dữ liệu dạng bảng (DataFrame)
+import numpy as np # Dùng để xử lý dữ liệu số, mảng, ma trận
+from sklearn.neighbors import NearestNeighbors # Dùng để tìm K giao dịch gần nhất dựa vào tọa độ (latitude, longitude) - Là Thuật toán KNN trong sklearn
+from sklearn.preprocessing import StandardScaler #  Dùng để chuẩn hóa các cột số liên tục (StandardScaler) - Là một lớp trong sklearn
+import joblib # Dùng để lưu và tải các đối tượng Python (như model, scaler) ra file physical (pickle)
+import os # Dùng để thao tác với hệ thống file, thư mục
 
 class SpatialPreprocessor:
     def __init__(self, k_neighbors=5, models_dir=None):

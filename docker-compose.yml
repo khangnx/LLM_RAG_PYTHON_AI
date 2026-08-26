@@ -1,5 +1,3 @@
-version: '3.8'
-
 networks:
   rag-network:
     driver: bridge
@@ -11,21 +9,14 @@ services:
     container_name: ollama_container
     ports:
       - "11434:11434"
+    environment:
+      - OLLAMA_ORIGINS=*
     volumes:
       - ollama_data:/root/.ollama
     networks:
       - rag-network
     restart: unless-stopped
-  ollama-pull-model:
-    image: curlimages/curl:latest
-    container_name: ollama_pull_model
-    networks:
-      - rag-network
-    depends_on:
-      - ollama
-    # Lệnh ra lệnh cho Ollama kéo bản 1.5b về ngầm
-    entrypoint: [ "sh", "-c", "sleep 5 && curl -X POST http://ollama:11434/api/pull -d '{\"name\": \"qwen2.5:1.5b\"}'" ]
-    # Nếu máy bạn có card đồ họa NVIDIA, hãy bỏ 5 dấu thăng (#) ở dưới để kích hoạt GPU:
+    # Nếu máy bạn có GPU NVIDIA, hãy mở comment 6 dòng dưới để kích hoạt:
     # deploy:
     #   resources:
     #     reservations:
@@ -34,7 +25,17 @@ services:
     #           count: all
     #           capabilities: [gpu]
 
-    # 2. Database: MySQL 8.0 lưu lịch sử chat
+  # Kéo ngầm model qwen2.5:7b khi khởi động
+  ollama-pull-model:
+    image: curlimages/curl:latest
+    container_name: ollama_pull_model
+    networks:
+      - rag-network
+    depends_on:
+      - ollama
+    entrypoint: [ "sh", "-c", "sleep 10 && curl -X POST http://ollama:11434/api/pull -d '{\"name\": \"qwen2.5:7b\"}'" ]
+
+  # 2. Database: MySQL 8.0 lưu lịch sử chat
   mysql:
     image: mysql:8.0
     container_name: mysql_rag
@@ -46,20 +47,31 @@ services:
       - "3306:3306"
     volumes:
       - mysql_data:/var/lib/mysql
-      # Mount file SQL này vào thư mục init của MySQL.
-      # MySQL sẽ tự động chạy file này lần đầu tiên khi tạo database mới.
       - ./backend/init.sql:/docker-entrypoint-initdb.d/init.sql
     networks:
       - rag-network
     restart: unless-stopped
-    # Thêm healthcheck để backend biết MySQL đã sẵn sàng chưa
     healthcheck:
       test: [ "CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-proot_password" ]
       interval: 10s
       timeout: 5s
       retries: 10
 
-  # 3. Backend Service: Python FastAPI kết nối LangChain & ChromaDB & MySQL
+  # 3. ChromaDB Vector Store Server
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: chromadb_server
+    ports:
+      - "8001:8000"
+    environment:
+      - IS_PERSISTENT=TRUE
+    volumes:
+      - vector_db_data:/data
+    networks:
+      - rag-network
+    restart: unless-stopped
+
+  # 4. Backend Service: Python FastAPI kết nối LangChain & ChromaDB & MySQL
   backend:
     build: ./backend
     container_name: fastapi_backend
@@ -68,11 +80,15 @@ services:
     volumes:
       - ./backend:/app
       - ./data_source:/data_source
+      - ./sales_uploads:/sales_uploads
       - vector_db_data:/vector_db
     environment:
       - OLLAMA_HOST=http://ollama:11434
       - DATABASE_URL=mysql+pymysql://root:root_password@mysql:3306/rag_demo_db
       - OPENAI_API_KEY=your_openai_key_here
+      - SALES_UPLOADS_DIR=/sales_uploads
+      - CHROMA_SERVER_HOST=chromadb
+      - CHROMA_SERVER_HTTP_PORT=8000
     networks:
       - rag-network
     depends_on:
@@ -80,9 +96,11 @@ services:
         condition: service_healthy
       ollama:
         condition: service_started
+      chromadb:
+        condition: service_started
     restart: unless-stopped
 
-  # 4. Frontend Service: Giao diện người dùng VueJS + Element Plus
+  # 5. Frontend Service: Giao diện người dùng VueJS + Element Plus
   frontend:
     build: ./frontend
     container_name: vuejs_frontend
@@ -90,21 +108,20 @@ services:
       - "5173:5173"
     volumes:
       - ./frontend:/app
-      # Tránh ghi đè node_modules từ máy host vào container khi dev
       - /app/node_modules
     networks:
       - rag-network
     depends_on:
       - backend
     restart: unless-stopped
-  # 5. Giao diện quản lý trực quan cho ChromaDB (Tự dựng bằng Nginx chính thức)
+
+  # 6. Giao diện quản lý trực quan cho ChromaDB
   chromadb-ui:
     image: nginx:alpine
     container_name: chromadb_html_ui
     ports:
       - "8090:80"
     volumes:
-      # Gắn thư mục chứa file index.html vừa tạo vào thư mục gốc của Nginx
       - ./chroma_ui_dash:/usr/share/nginx/html:ro
     networks:
       - rag-network
@@ -112,7 +129,32 @@ services:
       - backend
     restart: unless-stopped
 
+  # 7. n8n: Workflow Automation + AI Agent
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:latest
+    container_name: n8n
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_HOST=localhost
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - NODE_ENV=production
+      - TZ=Asia/Ho_Chi_Minh
+      - OLLAMA_HOST=http://ollama:11434
+      - N8N_RESTRICT_FILE_ACCESS_TO=/data_source
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./data_source:/data_source
+    networks:
+      - rag-network
+    depends_on:
+      - ollama
+      - chromadb
+    restart: unless-stopped
+
 volumes:
   ollama_data:
   mysql_data:
   vector_db_data:
+  n8n_data:

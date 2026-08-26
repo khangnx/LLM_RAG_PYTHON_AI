@@ -3,15 +3,16 @@ database.py
 -----------
 Module quản lý kết nối MySQL và định nghĩa tất cả model ORM.
 Bảng:
-  - rag_history    : Lưu audit log mỗi lần gọi /api/chat (giữ nguyên)
-  - chat_sessions  : Mỗi cuộc trò chuyện biệt lập (UUID làm khóa chính)
-  - chat_messages  : Từng tin nhắn thuộc về một session
+  - rag_history          : Lưu audit log mỗi lần gọi /api/chat
+  - chat_sessions        : Mỗi cuộc trò chuyện biệt lập (UUID làm khóa chính)
+  - chat_messages        : Từng tin nhắn thuộc về một session
+  - real_estate_dataset  : Dữ liệu BDS để huấn luyện XGBoost (ghi thẳng từ batch_processor)
 """
 
 import os
 import uuid
 from datetime import datetime
-from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, ForeignKey, Enum
+from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, ForeignKey, Enum, Numeric, Float
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship
 
 # =====================================================
@@ -84,6 +85,32 @@ class ChatMessage(Base):
 
     # Quan hệ ngược về session
     session = relationship("ChatSession", back_populates="messages")
+
+
+
+# =====================================================
+# MODEL: real_estate_dataset (DỮ LIỆU HUẤN LUYỆN XGBOOST)
+# =====================================================
+
+class RealEstateDataset(Base):
+    """
+    Bảng lưu dữ liệu bất động sản dùng để huấn luyện mô hình XGBoost.
+    Dữ liệu được ghi thẳng từ batch_processor sau khi xử lý ảnh/video.
+    """
+    __tablename__ = "real_estate_dataset"
+
+    id               = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    address          = Column(String(255), nullable=True)
+    latitude         = Column(Float, nullable=True)
+    longitude        = Column(Float, nullable=True)
+    land_area        = Column(Numeric(10, 2), nullable=True)
+    floors           = Column(Integer, nullable=True)
+    interior_score   = Column(Integer, nullable=True)   # 1=Bình dân, 2=Cơ bản, 3=Cao cấp
+    alley_width      = Column(Numeric(5, 1), nullable=True)
+    raw_price_billion= Column(Numeric(15, 4), nullable=True, default=0.0)  # 0 = chưa định giá
+    data_source      = Column(String(50), default="sales_upload")
+    is_verified      = Column(Integer, default=1)
+    created_at       = Column(DateTime, default=datetime.utcnow)
 
 
 # =====================================================

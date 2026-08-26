@@ -16,7 +16,7 @@ def route_request(state: AgentState):
         return "estate_parsing"
     else:
         return "general_doc"
-
+    
 def build_agent_graph() -> StateGraph:
     """
     Biên dịch và khởi tạo luồng LangGraph với Router

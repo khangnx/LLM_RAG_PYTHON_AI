@@ -1,6 +1,6 @@
-from data_loader import load_real_estate_data
-from preprocessor import SpatialPreprocessor
-from xgboost_trainer import SpatialXGBoostTrainer
+from ai_training_engine.data_loader import load_real_estate_data # Dùng để tải dữ liệu bất động sản từ file CSV hoặc cơ sở dữ liệu
+from ai_training_engine.preprocessor import SpatialPreprocessor # Dùng để tiền xử lý dữ liệu bất động sản, bao gồm tính toán các đặc trưng không gian (spatial features) dựa trên KNN và chuẩn hóa dữ liệu (StandardScaler)
+from ai_training_engine.xgboost_trainer import SpatialXGBoostTrainer # Dùng để huấn luyện mô hình XGBoost Regressor dựa trên dữ liệu đã được tiền xử lý (preprocessed data). Mục tiêu là dự đoán giá trị bất động sản dựa vào các đặc trưng đầu vào.
 
 def run_training_pipeline():
     print("==================================================")

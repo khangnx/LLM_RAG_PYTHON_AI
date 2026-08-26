@@ -1,7 +1,7 @@
-import easyocr
-import re
-import numpy as np
-import cv2
+import easyocr # Import thư viện EasyOCR để nhận diện ký tự từ hình ảnh, tức là bóc tách thông tin từ ảnh Sổ Hồng, anh Sổ Đỏ, ảnh Giấy chứng nhận quyền sử dụng đất, v.v.
+import re # iMport thư viện re để sử dụng biểu thức chính quy (regular expressions) trong việc bóc tách thông tin từ văn bản.
+import numpy as np # Import thư viện numpy để xử lý mảng và chuyển đổi dữ liệu hình ảnh từ bytes sang định dạng mà OpenCV có thể xử lý.
+import cv2 # Import thư viện OpenCV để xử lý hình ảnh, ví dụ như giải mã dữ liệu hình ảnh từ bytes sang định dạng mà EasyOCR có thể nhận diện.
 
 class PinkBookOCR:
     def __init__(self):

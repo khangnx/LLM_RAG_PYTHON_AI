@@ -23,6 +23,8 @@ from fastapi.middleware.cors import CORSMiddleware # Dùng để cấu hình COR
 from pydantic import BaseModel # Dùng để định nghĩa các model dữ liệu cho request/response
 import pandas as pd # Dùng để đọc file Excel (.xlsx, .xls) và xử lý dữ liệu dạng bảng
 
+
+
 # LangChain components
 from langchain_community.document_loaders import PyPDFLoader, TextLoader # Dùng để đọc file PDF và TXT/LOG
 from langchain_text_splitters import RecursiveCharacterTextSplitter # Dùng để cắt nhỏ văn bản thành các chunk
@@ -52,6 +54,7 @@ from sqlalchemy.orm import Session
 
 # Module Database nội bộ
 from database import init_db, get_db, RagHistory, ChatSession, ChatMessage
+from sales_upload_processor import SalesUploadProcessor
 
 # =====================================================
 # KHỞI TẠO LOGGING
@@ -85,6 +88,7 @@ app.add_middleware(
 # =====================================================
 DATA_SOURCE_DIR = "/data_source"
 VECTOR_DB_DIR = "/vector_db"
+SALES_UPLOADS_DIR = os.getenv("SALES_UPLOADS_DIR", "/sales_uploads")
 
 # =====================================================
 # KHỞI TẠO LLM OLLAMA
@@ -609,6 +613,44 @@ def get_session_messages(session_id: str, db: Session = Depends(get_db)):
             }
             for m in messages
         ]
+    }
+
+
+@app.post("/api/sales_uploads/process")
+def process_sales_uploads():
+    """
+    Xử lý tất cả các thư mục con trong sales_uploads.
+    Mỗi thư mục con là một bất động sản riêng biệt và sẽ được đổi tên thành PROCESSED_ sau khi xử lý.
+    """
+    if not os.path.exists(SALES_UPLOADS_DIR):
+        raise HTTPException(status_code=404, detail="Thư mục sales_uploads không tồn tại.")
+
+    processor = SalesUploadProcessor(SALES_UPLOADS_DIR)
+    try:
+        results = processor.process_all_folders()
+        return {
+            "status": "success",
+            "processed_count": len(results),
+            "results": results,
+        }
+    except Exception as e:
+        logger.error(f"Lỗi xử lý sales_uploads: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Lỗi xử lý sales_uploads: {str(e)}")
+
+
+@app.get("/api/sales_uploads/folders")
+def list_sales_upload_folders():
+    """Liệt kê thư mục chưa xử lý và đã xử lý trong sales_uploads."""
+    if not os.path.exists(SALES_UPLOADS_DIR):
+        raise HTTPException(status_code=404, detail="Thư mục sales_uploads không tồn tại.")
+
+    folders = sorted(os.listdir(SALES_UPLOADS_DIR))
+    unprocessed = [f for f in folders if os.path.isdir(os.path.join(SALES_UPLOADS_DIR, f)) and not f.startswith("PROCESSED_")]
+    processed = [f for f in folders if os.path.isdir(os.path.join(SALES_UPLOADS_DIR, f)) and f.startswith("PROCESSED_")]
+    return {
+        "status": "success",
+        "unprocessed_folders": unprocessed,
+        "processed_folders": processed,
     }
 
 

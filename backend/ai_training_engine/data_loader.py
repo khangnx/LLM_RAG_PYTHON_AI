@@ -41,3 +41,46 @@ def load_real_estate_data() -> pd.DataFrame:
 if __name__ == "__main__":
     df = load_real_estate_data()
     print(df.head())
+
+def insert_sales_data_to_db(aggregated_json: dict) -> bool:
+    """
+    Nạp dữ liệu đã gộm cụm từ batch_processor vào bảng real_estate_dataset.
+    Bước quan trọng: Geocoding address → lat/lon trước khi INSERT.
+    """
+    try:
+        # --- GEOCODING: Địa chỉ chuỗi → Tọa độ (Bắt buộc cho XGBoost) ---
+        address = aggregated_json.get("address", "")
+        lat, lon = 10.7769, 106.7009  # Mặc định trung tâm TP.HCM
+
+        if address:
+            try:
+                from app.services.geo_service import GeoService
+                geo = GeoService()
+                lat, lon = geo.get_coordinates(address)
+                print(f"[Geocoding] '{address}' → lat={lat}, lon={lon}")
+            except Exception as geo_err:
+                print(f"[Geocoding] Không thể lấy tọa độ, dùng mặc định TP.HCM. Lỗi: {geo_err}")
+
+        # --- GOM CỤM JSON đầy đủ các cột cần thiết cho bảng ---
+        row = {
+            "property_code":  aggregated_json.get("property_code", "UNKNOWN_PROPERTY"),
+            "address":        aggregated_json.get("address"),
+            "latitude":       lat,
+            "longitude":      lon,
+            "land_area":      aggregated_json.get("land_area", 50.0),
+            "floors":         aggregated_json.get("floors", 1),
+            "interior_score": aggregated_json.get("interior_score", 2),
+            "alley_width":    aggregated_json.get("alley_width", 3.0),
+            "raw_price_billion": aggregated_json.get("raw_price_billion", 0.0),  # Unlabelled → 0
+            "data_source":    aggregated_json.get("data_source", "sales_upload"),
+            "is_verified":    aggregated_json.get("is_verified", 1),
+        }
+
+        df = pd.DataFrame([row])
+        df.to_sql("real_estate_dataset", con=engine, if_exists="append", index=False)
+        print(f"[✅ DB] Đã INSERT thành công vào real_estate_dataset: {row['address']}")
+        return True
+
+    except Exception as e:
+        print(f"[LỖI MySQL] Không thể lưu dữ liệu: {e}")
+        return False
